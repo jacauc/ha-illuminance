@@ -30,7 +30,7 @@ The following sources of weather data are known to be supported:
 Integration | Notes
 -|-
 [AccuWeather](https://www.home-assistant.io/integrations/accuweather/) | `weather`
-[Buienradar Sensor](https://www.home-assistant.io/integrations/buienradar/#sensor) | Condition `sensor`
+[Buienradar](https://www.home-assistant.io/integrations/buienradar/) | `weather`
 [ecobee](https://www.home-assistant.io/integrations/ecobee/) |
 [Meteorologisk institutt (Met.no)](https://www.home-assistant.io/integrations/met/) | `weather`
 [OpenWeatherMap](https://www.home-assistant.io/integrations/openweathermap/) | `weather`; cloud_coverage & condition `sensor`
