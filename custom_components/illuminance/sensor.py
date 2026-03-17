@@ -292,11 +292,15 @@ class IlluminanceSensor(SensorEntity):
         parallel_updates: asyncio.Semaphore | None,
     ) -> None:
         """Start adding an entity to a platform."""
+        # This method is called before first call to async_update.
+        
         if (scan_interval := self.entity_description.scan_interval) is not None:
             platform.scan_interval = scan_interval
             if hasattr(platform, "scan_interval_seconds"):
                 platform.scan_interval_seconds = scan_interval.total_seconds()
         super().add_to_platform_start(hass, platform, parallel_updates)
+
+        # Now that parent method has been called, self.hass has been initialized.
 
         self._get_divisor_from_weather_data(
             hass.states.get(self.weather_entity) if self.weather_entity else None
@@ -318,6 +322,7 @@ class IlluminanceSensor(SensorEntity):
                 self._get_divisor_from_weather_data(new_state)
                 self.async_schedule_update_ha_state(True)
 
+        # When source entity changes check to see if we should update.
         self.async_on_remove(
             async_track_state_change_event(
                 hass, self.weather_entity, sensor_state_listener
@@ -355,6 +360,8 @@ class IlluminanceSensor(SensorEntity):
 
     def _get_divisor_from_weather_data(self, entity_state: State | None) -> None:
         """Get weather data from input entity."""
+
+        # Use fallback unless divisor can be successfully determined from weather data.
         self._cond_desc = "without weather data"
         self._sk = self.fallback
 
@@ -365,6 +372,8 @@ class IlluminanceSensor(SensorEntity):
         if condition in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             condition = None
 
+        # If entity type, and potentially assocated mappings, have not been determined
+        # yet, try to determine them.
         if self._entity_status <= EntityStatus.NO_ATTRIBUTION:
             if condition:
                 assert entity_state
@@ -457,7 +466,10 @@ class IlluminanceSensor(SensorEntity):
 
         sun_factor = self._sun_factor(now)
 
+        # No point in getting division factor because zero divided by anything is
+        # still zero. I.e., it's nighttime.
         if sun_factor == 0:
+            # For historic reasons, return a value of 10.
             _LOGGER.debug("%s: Updating -> 10", self.name)
             self._attr_native_value = 10
             raise AbortUpdate
@@ -490,9 +502,13 @@ class IlluminanceSensor(SensorEntity):
             )
 
         if sunrise_end < now < sunset_begin:
+            # Daytime
             return 1
         if now < sunrise_begin or sunset_end < now:
+            # Nighttime
             return 0
         if now <= sunrise_end:
+            # Sunrise
             return (now - sunrise_begin).total_seconds() / (60 * 60)
+        # Sunset
         return (sunset_end - now).total_seconds() / (60 * 60)
