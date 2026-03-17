@@ -73,6 +73,7 @@ from homeassistant.util.hass_dict import HassKey
 
 from .const import (
     CONF_FALLBACK,
+    CONF_PRECISION,
     DEFAULT_FALLBACK,
     DEFAULT_NAME,
     DEFAULT_SCAN_INTERVAL,
@@ -165,7 +166,7 @@ class IlluminanceSensorEntityDescription(SensorEntityDescription):  # type: igno
     scan_interval: timedelta | None = None
 
 
-def _sensor(config: ConfigType, unique_id: str, scan_interval: timedelta) -> Entity:
+def _sensor(config: ConfigType, unique_id: str, scan_interval: timedelta, entry: ConfigEntry | None = None) -> Entity:
     """Create entity to add."""
     weather_entity = config.get(CONF_ENTITY_ID)
     fallback = cast(
@@ -193,7 +194,7 @@ def _sensor(config: ConfigType, unique_id: str, scan_interval: timedelta) -> Ent
         scan_interval=scan_interval,
     )
 
-    return IlluminanceSensor(entity_description)
+    return IlluminanceSensor(entity_description, entry)
 
 
 async def async_setup_entry(
@@ -206,7 +207,7 @@ async def async_setup_entry(
     config[CONF_NAME] = entry.title
     unique_id = entry.unique_id or entry.entry_id
     scan_interval = timedelta(minutes=config[CONF_SCAN_INTERVAL])
-    async_add_entities([_sensor(config, unique_id, scan_interval)], True)
+    async_add_entities([_sensor(config, unique_id, scan_interval, entry)], True)
 
 
 def _illumiance(elev: Num) -> float:
@@ -251,9 +252,10 @@ class IlluminanceSensor(SensorEntity):
     _warned = False
     _sun_data: tuple[date, tuple[datetime, datetime, datetime, datetime]] | None = None
 
-    def __init__(self, entity_description: IlluminanceSensorEntityDescription) -> None:
+    def __init__(self, entity_description: IlluminanceSensorEntityDescription, entry: ConfigEntry | None) -> None:
         """Initialize sensor."""
         self.entity_description = entity_description
+        self._config_entry = entry
         if entity_description.unique_id:
             self._attr_unique_id = entity_description.unique_id
         else:
@@ -277,9 +279,9 @@ class IlluminanceSensor(SensorEntity):
     @property
     def precision(self) -> int:
         """Return the precision for rounding."""
-        # This fetches the 'precision' value we added to the config flow
-        if self.config_entry:
-            return cast(int, self.config_entry.options.get("precision", 0))
+        if self._config_entry:
+            # We force the value to be an int to satisfy the round() function
+            return int(self._config_entry.options.get(CONF_PRECISION, 0))
         return 0
 
     @callback
@@ -290,15 +292,11 @@ class IlluminanceSensor(SensorEntity):
         parallel_updates: asyncio.Semaphore | None,
     ) -> None:
         """Start adding an entity to a platform."""
-        # This method is called before first call to async_update.
-
         if (scan_interval := self.entity_description.scan_interval) is not None:
             platform.scan_interval = scan_interval
             if hasattr(platform, "scan_interval_seconds"):
                 platform.scan_interval_seconds = scan_interval.total_seconds()
         super().add_to_platform_start(hass, platform, parallel_updates)
-
-        # Now that parent method has been called, self.hass has been initialized.
 
         self._get_divisor_from_weather_data(
             hass.states.get(self.weather_entity) if self.weather_entity else None
@@ -320,7 +318,6 @@ class IlluminanceSensor(SensorEntity):
                 self._get_divisor_from_weather_data(new_state)
                 self.async_schedule_update_ha_state(True)
 
-        # When source entity changes check to see if we should update.
         self.async_on_remove(
             async_track_state_change_event(
                 hass, self.weather_entity, sensor_state_listener
@@ -344,8 +341,7 @@ class IlluminanceSensor(SensorEntity):
         if self.mode is Mode.irradiance:
             value /= LUX_PER_WPSM
 
-        # Calculate final value.
-        # Uses the dynamic precision setting to prevent jitter.
+        # Calculate final value with user precision
         self._attr_native_value = round(value / self._sk, self.precision)
 
         _LOGGER.debug(
@@ -359,8 +355,6 @@ class IlluminanceSensor(SensorEntity):
 
     def _get_divisor_from_weather_data(self, entity_state: State | None) -> None:
         """Get weather data from input entity."""
-
-        # Use fallback unless divisor can be successfully determined from weather data.
         self._cond_desc = "without weather data"
         self._sk = self.fallback
 
@@ -371,8 +365,6 @@ class IlluminanceSensor(SensorEntity):
         if condition in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             condition = None
 
-        # If entity type, and potentially assocated mappings, have not been determined
-        # yet, try to determine them.
         if self._entity_status <= EntityStatus.NO_ATTRIBUTION:
             if condition:
                 assert entity_state
@@ -465,10 +457,7 @@ class IlluminanceSensor(SensorEntity):
 
         sun_factor = self._sun_factor(now)
 
-        # No point in getting division factor because zero divided by anything is
-        # still zero. I.e., it's nighttime.
         if sun_factor == 0:
-            # For historic reasons, return a value of 10.
             _LOGGER.debug("%s: Updating -> 10", self.name)
             self._attr_native_value = 10
             raise AbortUpdate
@@ -501,13 +490,9 @@ class IlluminanceSensor(SensorEntity):
             )
 
         if sunrise_end < now < sunset_begin:
-            # Daytime
             return 1
         if now < sunrise_begin or sunset_end < now:
-            # Nighttime
             return 0
         if now <= sunrise_end:
-            # Sunrise
             return (now - sunrise_begin).total_seconds() / (60 * 60)
-        # Sunset
         return (sunset_end - now).total_seconds() / (60 * 60)
