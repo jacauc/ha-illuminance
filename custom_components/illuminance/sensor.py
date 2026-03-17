@@ -274,6 +274,14 @@ class IlluminanceSensor(SensorEntity):
         """Fallback illuminance divisor."""
         return cast(float, self.entity_description.fallback)
 
+    @property
+    def precision(self) -> int:
+        """Return the precision for rounding."""
+        # This fetches the 'precision' value we added to the config flow
+        if self.config_entry:
+            return cast(int, self.config_entry.options.get("precision", 0))
+        return 0
+
     @callback
     def add_to_platform_start(
         self,
@@ -337,16 +345,16 @@ class IlluminanceSensor(SensorEntity):
             value /= LUX_PER_WPSM
 
         # Calculate final value.
+        # Uses the dynamic precision setting to prevent jitter.
+        self._attr_native_value = round(value / self._sk, self.precision)
 
-        self._attr_native_value = value / self._sk
-        display_precision = self._sensor_option_display_precision or 0
         _LOGGER.debug(
             "%s: Updating %s -> %s / %0.2f = %s",
             self.name,
             self._cond_desc,
-            f"{value:0.{display_precision}f}",
+            f"{value:0.{self.precision}f}",
             self._sk,
-            f"{self._attr_native_value:0.{display_precision}f}",
+            f"{self._attr_native_value:0.{self.precision}f}",
         )
 
     def _get_divisor_from_weather_data(self, entity_state: State | None) -> None:
