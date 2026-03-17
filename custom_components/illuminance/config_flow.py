@@ -36,6 +36,7 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     CONF_FALLBACK,
+    CONF_PRECISION,  # <--- Added this line
     DEFAULT_NAME,
     DEFAULT_SCAN_INTERVAL_MIN,
     DOMAIN,
@@ -79,6 +80,12 @@ class IlluminanceFlow(ConfigEntryBaseFlow):
                         min=1, max=10, step="any", mode=NumberSelectorMode.BOX
                     )
                 ),
+                # 1. Define the Precision field in the UI
+                vol.Optional(CONF_PRECISION): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0, max=10, step=1, mode=NumberSelectorMode.BOX
+                    )
+                ),
             }
         )
         data_schema = self.add_suggested_values_to_schema(
@@ -98,6 +105,16 @@ class IlluminanceFlow(ConfigEntryBaseFlow):
             data_schema = self.add_suggested_values_to_schema(
                 data_schema, {CONF_FALLBACK: fallback}
             )
+        # 2. Add the suggested value for Precision
+        if (precision := self.options.get(CONF_PRECISION)) is not None:
+            data_schema = self.add_suggested_values_to_schema(
+                data_schema, {CONF_PRECISION: precision}
+            )
+        else:
+            data_schema = self.add_suggested_values_to_schema(
+                data_schema, {CONF_PRECISION: 0}
+            )
+
         return self.async_show_form(step_id="options", data_schema=data_schema)
 
     @abstractmethod
