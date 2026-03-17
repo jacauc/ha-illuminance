@@ -293,7 +293,7 @@ class IlluminanceSensor(SensorEntity):
     ) -> None:
         """Start adding an entity to a platform."""
         # This method is called before first call to async_update.
-        
+
         if (scan_interval := self.entity_description.scan_interval) is not None:
             platform.scan_interval = scan_interval
             if hasattr(platform, "scan_interval_seconds"):
